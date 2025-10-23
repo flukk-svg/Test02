@@ -1,0 +1,179 @@
+
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inventory - เครื่องคอมพิวเตอร์</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen p-4">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-2xl font-semibold mb-4">ลงทะเบียนอุปกรณ์คอมพิวเตอร์</h1>
+
+    <form id="deviceForm" class="bg-white p-4 rounded shadow space-y-4">
+      <div>
+        <label class="block text-sm">ชื่ออุปกรณ์</label>
+        <input name="name" required class="w-full border p-2 rounded" />
+      </div>
+
+      <div>
+        <label class="block text-sm">ประเภท</label>
+        <input name="type" required class="w-full border p-2 rounded" />
+      </div>
+
+      <div>
+        <label class="block text-sm">ผู้ใช้งาน</label>
+        <input name="owner" required class="w-full border p-2 rounded" />
+      </div>
+
+      <div>
+        <label class="block text-sm">แผนก</label>
+        <input name="department" required class="w-full border p-2 rounded" />
+      </div>
+
+      <div>
+        <label class="block text-sm">Serial Number</label>
+        <input name="serial" required class="w-full border p-2 rounded" />
+      </div>
+
+      <div>
+        <label class="block text-sm">รูปภาพอุปกรณ์ (ถ้ามี)</label>
+        <input id="photoInput" type="file" name="photo" accept="image/*" class="w-full" />
+      </div>
+
+      <div class="flex gap-2">
+        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">บันทึก</button>
+        <button id="resetBtn" type="button" class="px-4 py-2 bg-gray-200 rounded">ล้าง</button>
+      </div>
+
+      <div id="status" class="text-sm mt-2"></div>
+    </form>
+
+    <hr class="my-6" />
+
+    <h2 class="text-xl font-medium mb-2">รายงาน</h2>
+    <div class="bg-white p-4 rounded shadow">
+      <div class="mb-2">จำนวนอุปกรณ์ทั้งหมด: <span id="totalCount">0</span></div>
+      <div id="tableWrapper" class="overflow-x-auto">
+        <table id="devicesTable" class="min-w-full text-sm border-collapse">
+          <thead>
+            <tr>
+              <th class="border p-2">เวลา</th>
+              <th class="border p-2">ชื่อ</th>
+              <th class="border p-2">ประเภท</th>
+              <th class="border p-2">ผู้ใช้งาน</th>
+              <th class="border p-2">แผนก</th>
+              <th class="border p-2">Serial</th>
+              <th class="border p-2">รูป</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script>
+// === CONFIG: เปลี่ยนเป็น URL ของ Google Apps Script Web App ที่คุณ deploy แล้ว ===
+const API_URL = 'https://script.google.com/macros/s/AKfycbzwwmtFvEab8IXlDSP436GSXL6B_Lo9VhBtshcC1Bs0IazFMnlG6OFnCQIJXQbAfG1C/exec';
+
+function fileToBase64(file){
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+async function fetchData() {
+  try {
+    const res = await fetch(API_URL + '?action=get');
+    const data = await res.json();
+    renderTable(data);
+  } catch (e) {
+    console.error(e);
+    document.getElementById('status').textContent = 'ไม่สามารถโหลดข้อมูลได้';
+  }
+}
+
+function renderTable(rows) {
+  const tbody = document.querySelector('#devicesTable tbody');
+  tbody.innerHTML = '';
+  rows.slice().reverse().forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="border p-2">${row.timestamp || ''}</td>
+      <td class="border p-2">${row.name || ''}</td>
+      <td class="border p-2">${row.type || ''}</td>
+      <td class="border p-2">${row.owner || ''}</td>
+      <td class="border p-2">${row.department || ''}</td>
+      <td class="border p-2">${row.serial || ''}</td>
+      <td class="border p-2">${row.photourl ? `<a href="${row.photourl}" target="_blank">รูป</a>` : ''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('totalCount').textContent = rows.length;
+}
+
+// submit form
+document.getElementById('deviceForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = 'กำลังส่ง...';
+
+  const form = e.target;
+  const payload = {
+    action: 'add',
+    name: form.name.value || '',
+    type: form.type.value || '',
+    owner: form.owner.value || '',
+    department: form.department.value || '',
+    serial: form.serial.value || ''
+  };
+
+  const fileInput = document.getElementById('photoInput');
+  if (fileInput && fileInput.files && fileInput.files[0]) {
+    try {
+      const base64 = await fileToBase64(fileInput.files[0]);
+      payload.photoBase64 = base64;
+      payload.photoName = fileInput.files[0].name;
+    } catch(err) {
+      console.error(err);
+      statusEl.textContent = 'ไม่สามารถแปลงรูปได้';
+      return;
+    }
+  }
+
+  try {
+    const body = Object.keys(payload).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(payload[k])).join('&');
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    });
+    const json = await resp.json();
+    if (json.success) {
+      statusEl.textContent = 'บันทึกสำเร็จ';
+      form.reset();
+      fetchData();
+    } else {
+      statusEl.textContent = 'บันทึกไม่สำเร็จ: ' + (json.message || '');
+    }
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'เกิดข้อผิดพลาดขณะส่ง';
+  }
+});
+
+// reset
+document.getElementById('resetBtn').addEventListener('click', () => {
+  document.getElementById('deviceForm').reset();
+});
+
+// initial load
+fetchData();
+</script>
+</body>
+</html>
